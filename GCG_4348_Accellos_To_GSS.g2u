@@ -1,0 +1,368 @@
+Program.Sub.Preflight.Start
+V.Global..BulkDeclareString(sServer, sDatabase, sUID, sPWD, sLogin, sProvider)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+V.Local.sRet.Declare(String)
+
+'GSS Connection
+F.ODBC.Connection!conG.OpenConnection(v.Ambient.PDSN,v.Ambient.PUser,v.Ambient.PPass)
+'Accellos Connection
+
+'get Connection string
+F.ODBC.Connection!conG.ExecuteAndReturn("Select rTrim(PROVIDER), rTrim(SERVER), rTrim(DATABASE), rTrim(USER_ID), rTrim(PWD) From GCG_4348_CONNECTION Where NUM = '1'", V.Local.sRet)
+F.Intrinsic.String.Split(V.Local.sRet, "*!*", V.Local.sRet)
+
+V.Global.sProvider.Set(V.Local.sRet(0))
+V.Global.sServer.Set(V.Local.sRet(1))
+V.Global.sDatabase.Set(V.Local.sRet(2))
+V.Global.sUID.Set(V.Local.sRet(3))
+V.Global.sPWD.Set(V.Local.sRet(4))
+
+F.Intrinsic.String.Build("Provider={0};Server={1};Database={2};User ID={3};Password={4};", V.Global.sProvider,V.Global.sServer,V.Global.sDatabase,V.Global.sUID,V.Global.sPWD,V.Global.sLogin)
+F.ODBC.Connection!conA.OpenConnection(V.Global.sLogin)
+
+'For Online update: Check if the program is running.
+Function.Intrinsic.Control.CallSub(Is_Running)
+'''' add or subtract this amount from inventory
+Function.Intrinsic.Control.CallSub(MT)
+''''shipping
+Function.Intrinsic.Control.CallSub(PC)
+'''close program
+Function.Intrinsic.Control.CallSub(unload)
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_Accellos_To_GSS.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.MT.Start
+F.Intrinsic.Control.SetErrorHandler("MT_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+
+V.Local..BulkDeclareString(ssql, sPart, sRev, sLine, sRecords, sSaveFile)
+V.Local.iC.Declare(Long)
+
+	' Part, Rev, Loc, Qty, Description, Lot,Bin, Hea, Serial, I/R, Drop
+
+'build a table for  FIELD001 = 'MT' and UPLOADED = ''
+V.Local.ssql.Set("Select ROWID,FIELD005, Field007, Field008, Field014, Field015, Field018, Field028, Field029, FIELD018 From A1Warehouse.dbo.UPLOAD Where FIELD001 = 'MT' And UPLOADED = '0'")
+F.Data.DataTable.CreateFromSQL("MT", "conA", V.Local.ssql, TRUE)
+
+'create dictionary to fill with number of records for each inventory part in history
+F.Data.DataTable.AddColumn("MT", "BEG", "String")
+F.Data.Dictionary.CreateFromSQL("dict", "conG", "Select rTrim(PART) As FIELD005 , COUNT(PART) As Beg FROM V_INVENTORY_HIST Group By PART")
+F.Data.Dictionary.SetDefaultReturn("dict", "0")
+F.Data.DataTable.FillFromDictionary("MT", "dict", "FIELD005", "Beg")
+F.Data.Dictionary.Close("dict")
+
+F.Intrinsic.Control.For(V.Local.iC,0,V.DataTable.MT.RowCount--,1)
+	F.Intrinsic.String.RPad(V.DataTable.MT(V.Local.iC).FIELD005!FieldVal, " ", 20, V.Local.sPart)
+	V.Local.sRev.Set(V.Local.sPart.Right3)
+	V.Local.sPart.Set(V.Local.sPart.Left17)	
+	Function.Intrinsic.Control.If(V.DataTable.MT(V.Local.iC).FIELD007!FieldVal, =, "+")
+		'We need to do a Receipt, putting into Inventory for the Part Location
+		F.Intrinsic.String.Build("{0},{1},{2},{3},{4},{5},{6},,,R,N,,,",V.Local.sPart.Trim,V.Local.sRev.Trim,"  ",V.DataTable.MT(V.Local.iC).FIELD008!FieldVal,V.DataTable.MT(V.Local.iC).FIELD014!FieldVal, V.DataTable.MT(V.Local.iC).FIELD018!FieldVal, "ACELLO",V.Local.sLine)
+	Function.Intrinsic.Control.Else
+		'We need to do a Issue, taking qty out of Inventory for the Part Location
+		F.Intrinsic.String.Build("{0},{1},{2},{3},{4},{5},{6},,,I,N,,,",V.Local.sPart.Trim,V.Local.sRev.Trim,"  ",V.DataTable.MT(V.Local.iC).FIELD008!FieldVal,V.DataTable.MT(V.Local.iC).FIELD014!FieldVal, V.DataTable.MT(V.Local.iC).FIELD018!FieldVal, "ACELLO",V.Local.sLine)
+	Function.Intrinsic.Control.EndIf
+	
+	f.Intrinsic.Control.If(V.Local.sRecords,<>,"")
+				f.Intrinsic.String.Build("{0}{1}{2}",V.Local.sRecords,v.Ambient.NewLine,v.Local.sLine,V.Local.sRecords)
+			f.Intrinsic.Control.Else
+				V.Local.sRecords.Set(V.Local.sLine)
+			f.Intrinsic.Control.EndIf
+F.Intrinsic.Control.Next(V.Local.iC)
+
+'We are done looping through so we can save the file
+F.Intrinsic.String.Build("{0}\{1}StandIss.txt",V.Caller.FilesDir,V.Caller.CompanyCode,V.Local.sSaveFile)
+f.Intrinsic.File.String2File(v.Local.sSaveFile,v.Local.sRecords)
+F.Intrinsic.String.Build("{0}StandIss.txt",v.Caller.CompanyCode,v.Local.sSaveFile)
+F.Intrinsic.Task.LaunchGSSSync("WIR104","-C",v.Local.sSaveFile)
+
+' update table with a 1> everything was read and transferred correctly
+'create dictionary to fill with number of records for each inventory part in history
+F.Data.DataTable.AddColumn("MT", "END", "String")
+F.Data.Dictionary.CreateFromSQL("dict", "conG", "Select rTrim(PART) As FIELD005 , COUNT(PART) As Beg FROM V_INVENTORY_HIST Group By PART")
+F.Data.Dictionary.SetDefaultReturn("dict", "0")
+F.Data.DataTable.FillFromDictionary("MT", "dict", "FIELD005", "END")
+F.Data.Dictionary.Close("dict")
+
+F.Intrinsic.Control.For(V.Local.iC, 0, V.DataTable.MT.RowCount--, 1)
+	Function.Intrinsic.Control.If(V.DataTable.MT(V.Local.iC).END!FieldVal, >, V.DataTable.MT(V.Local.iC).BEG!FieldVal)
+		F.Intrinsic.String.Build("Update A1Warehouse.dbo.UPLOAD Set UPLOADED = '1' Where ROWID = '{0}'", V.DataTable.MT(V.Local.iC).ROWID!FieldVal, V.Local.ssql)
+		F.ODBC.Connection!conA.Execute(V.Local.ssql)
+	Function.Intrinsic.Control.Else
+		F.Intrinsic.String.Build("Update A1Warehouse.dbo.UPLOAD Set UPLOADED = '2' Where ROWID = '{0}'", V.DataTable.MT(V.Local.iC).ROWID!FieldVal, V.Local.ssql)
+		F.ODBC.Connection!conA.Execute(V.Local.ssql)
+	Function.Intrinsic.Control.EndIf
+F.Intrinsic.Control.Next(V.Local.iC)
+
+'close table
+F.Data.DataTable.Close("MT")
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("MT_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_Accellos_To_GSS.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.MT.End
+
+Program.Sub.SC.Start
+''F.Intrinsic.Control.SetErrorHandler("SC_Err")
+''F.Intrinsic.Control.ClearErrors
+''V.Local.sError.Declare(String)
+''
+''V.Local..BulkDeclareString(ssql, sPart, sQTY,sPath, sFile, sLot)
+''V.Local.iC.Declare(Long)
+''
+'''build a table for FIELD001 = 'SC' and UPLOADED = '0'
+''V.Local.ssql.Set("Select ROWID, FIELD004, Field008, Field011 From A1Warehouse.dbo.UPLOAD Where FIELD001 = 'SC' And UPLOADED = '0'")
+''F.Data.DataTable.CreateFromSQL("SC", "conA", V.Local.ssql, TRUE)
+''
+'''create dictionary to fill with number of records for each inventory part in history
+''F.Data.DataTable.AddColumn("SC", "BEG", "String")
+''F.Data.Dictionary.CreateFromSQL("dict", "conG", "Select rTrim(PART) As FIELD004 , COUNT(PART) As Beg FROM V_INVENTORY_HIST Group By PART")
+''F.Data.Dictionary.SetDefaultReturn("dict", "0")
+''F.Data.DataTable.FillFromDictionary("SC", "dict", "FIELD004", "Beg")
+''F.Data.Dictionary.Close("dict")
+''
+'''loop through datatable
+''F.Intrinsic.Control.For(V.Local.iC,0,V.DataTable.SC.RowCount--,1)
+''	V.Local.sPart.Set(V.DataTable.SC(V.Local.iC).FIELD004!FieldValTrim)
+''	V.Local.sQTY.Set(V.DataTable.SC(V.Local.iC).FIELD008!FieldValTrim)
+''	V.Local.sLot.Set(V.DataTable.SC(V.Local.iC).FIELD011!FieldValTrim)
+''	'F.Intrinsic.String.Build("{0}P16,{1},,{2},,,,,", V.Local.sFile, V.Local.sPart, V.Local.sQTY, V.Local.sFile)
+''	'""""""""""""""""""""FIND WHERE LOT GOES """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+''	F.Intrinsic.String.Build("{0}P16,{1},,{2},{3},{4},,,", V.Local.sFile, V.Local.sPart, V.Local.sQTY, "ACELLO",V.Local.sLot,V.Local.sFile)
+''	F.Intrinsic.String.Build("{0}{1}", V.Local.sFile, V.Ambient.NewLine, V.Local.sFile)
+''F.Intrinsic.Control.Next(V.Local.iC)
+''
+''F.Intrinsic.String.Build("{0}\FILES\BARINV.TXT", V.Caller.GlobalDir, V.Local.sPath)
+''F.Intrinsic.File.String2File(V.Local.sPath, V.Local.sFile)
+''
+''Function.Global.General.CallWrapperSync(50, "INV516UL/A")
+'''Function.Global.General.CallWrapperSync(50, "INV516UL/NS")
+''
+''' update table with a 1> everything was read and transferred correctly
+'''create dictionary to fill with number of records for each inventory part in history
+''F.Data.DataTable.AddColumn("SC", "END", "String")
+''F.Data.Dictionary.CreateFromSQL("dict", "conG", "Select rTrim(PART) As FIELD004 , COUNT(PART) As Beg FROM V_INVENTORY_HIST Group By PART")
+''F.Data.Dictionary.SetDefaultReturn("dict", "0")
+''F.Data.DataTable.FillFromDictionary("SC", "dict", "FIELD004", "END")
+''F.Data.Dictionary.Close("dict")
+''
+'''send back results
+''F.Intrinsic.Control.For(V.Local.iC, 0, V.DataTable.SC.RowCount--, 1)
+''	Function.Intrinsic.Control.If(V.DataTable.SC(V.Local.iC).END!FieldVal, >, V.DataTable.SC(V.Local.iC).BEG!FieldVal)
+''		F.Intrinsic.String.Build("Update A1Warehouse.dbo.UPLOAD Set UPLOADED = '1' Where ROWID = '{0}'", V.DataTable.SC(V.Local.iC).ROWID!FieldVal, V.Local.ssql)
+''		F.ODBC.Connection!conA.Execute(V.Local.ssql)
+''	Function.Intrinsic.Control.Else
+''		F.Intrinsic.String.Build("Update A1Warehouse.dbo.UPLOAD Set UPLOADED = '2' Where ROWID = '{0}'", V.DataTable.SC(V.Local.iC).ROWID!FieldVal, V.Local.ssql)
+''		F.ODBC.Connection!conA.Execute(V.Local.ssql)
+''	Function.Intrinsic.Control.EndIf
+''F.Intrinsic.Control.Next(V.Local.iC)
+''
+'''close table
+''F.Data.DataTable.Close("SC")
+''
+''F.Intrinsic.Control.ExitSub
+''F.Intrinsic.Control.Label("SC_Err")
+''F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+''	Function.Intrinsic.String.Concat("Project: GCG_4348_Accellos_To_GSS.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+''	F.Intrinsic.UI.Msgbox(V.Local.sError)
+''	Function.Intrinsic.Control.CallSub(unload)
+''Function.Intrinsic.Control.EndIf
+Program.Sub.SC.End
+
+Program.Sub.PC.Start
+F.Intrinsic.Control.SetErrorHandler("PC_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+
+V.Local..BulkDeclareString(ssql, sRet, sType, sCarrier, sFile, sText, sParams,sHold, sFileName, sTrack, sLine, sOrder, sLot, sBin)
+V.Local.iC.Declare(Long)
+
+'this is shipping orders, 'FIELD046 is tracking
+V.Local.ssql.Set("Select ROWID, FIELD004, Field010, Field012, Field016, Field046 From A1Warehouse.dbo.UPLOAD Where FIELD001 = 'PC' And UPLOADED = '0'")
+F.Data.DataTable.CreateFromSQL("PC", "conA", V.Local.ssql, TRUE)
+
+'add expression column for dictionary
+F.Data.DataTable.AddExpressionColumn("PC", "ORD_LINE", "String", "[FIELD004]+'-'+[Field010]")
+
+'create dictionary to fill with number of records for each order-line in shipment_lines
+F.Data.DataTable.AddColumn("PC", "BEG", "String")
+F.Data.Dictionary.CreateFromSQL("dict", "conG", "Select rTrim(ORDER_NO)+'-'+ORDER_REC As ORD_LINE , COUNT(ORDER_REC) As Beg FROM V_SHIPMENT_LINES Group By ORDER_NO, ORDER_REC")
+F.Data.Dictionary.SetDefaultReturn("dict", "0")
+F.Data.DataTable.FillFromDictionary("PC", "dict", "ORD_LINE", "Beg")
+F.Data.Dictionary.Close("dict")
+
+'loop through datatable to create text
+F.Intrinsic.Control.For(V.Local.iC,0,V.DataTable.PC.RowCount--,1)
+
+	V.Local.sLine.Set(V.DataTable.PC(V.Local.iC).Field010!FieldVal)
+	F.Intrinsic.String.Left(V.Local.sLine, 3, V.Local.sLine)
+	V.Local.sOrder.Set(V.DataTable.PC(V.Local.iC).Field004!FieldVal)
+	F.Intrinsic.String.LPad(V.Local.sOrder,"0",7,V.Local.sOrder)
+	
+	F.Intrinsic.String.Build("{0}{1},{2},{3},{4},{5},,,,,,,", V.Local.sHold,V.Local.sOrder, V.Local.sLine, V.DataTable.PC(V.Local.iC).Field012!FieldValTrim, V.DataTable.PC(V.Local.iC).Field016!FieldVal, "ACELLO",V.Local.sHold)
+	
+	F.Intrinsic.String.Build("{0}{1}", V.Local.sHold, V.Ambient.NewLine, V.Local.sHold)
+F.Intrinsic.Control.Next(V.Local.iC)
+
+
+'for testing
+F.Intrinsic.String.Concat(V.Caller.Terminal,"Copy_SHIPFILE.Txt",V.Local.sFileName)
+F.Intrinsic.String.Concat(V.Caller.FilesDir,"\",V.Local.sFileName,V.Local.sFile)
+F.Intrinsic.File.String2File(V.Local.sFile,V.Local.sHold)
+
+
+F.Intrinsic.String.Concat(V.Caller.Terminal,"SHIPFILE.Txt",V.Local.sFileName)
+F.Intrinsic.String.Concat(V.Caller.FilesDir,"\",V.Local.sFileName,V.Local.sFile)
+F.Intrinsic.File.String2File(V.Local.sFile,V.Local.sHold)
+F.Intrinsic.String.Concat(V.Ambient.QuadQuote,V.Caller.CompanyCode,V.Caller.Terminal,"SHIPFILE","N",V.Ambient.QuadQuote,V.Local.sParams)
+F.Intrinsic.Task.LaunchGSSSync("ORD98PRT","-c",V.Local.sParams)
+
+'create dictionary to fill with number of records for each order-line in shipment_lines
+F.Data.DataTable.AddColumn("PC", "END", "String")
+F.Data.Dictionary.CreateFromSQL("dict", "conG", "Select rTrim(ORDER_NO)+'-'+ORDER_REC As ORD_LINE , COUNT(ORDER_REC) As Beg FROM V_SHIPMENT_LINES Group By ORDER_NO, ORDER_REC")
+F.Data.Dictionary.SetDefaultReturn("dict", "0")
+F.Data.DataTable.FillFromDictionary("PC", "dict", "ORD_LINE", "END")
+F.Data.Dictionary.Close("dict")
+
+'return value
+F.Intrinsic.Control.For(V.Local.iC, 0, V.DataTable.PC.RowCount--, 1)
+	Function.Intrinsic.Control.If(V.DataTable.PC(V.Local.iC).END!FieldVal, >, V.DataTable.PC(V.Local.iC).BEG!FieldVal)
+		F.Intrinsic.String.Build("Update A1Warehouse.dbo.UPLOAD Set UPLOADED = '1' Where ROWID = '{0}'", V.DataTable.PC(V.Local.iC).ROWID!FieldVal, V.Local.ssql)
+		F.ODBC.Connection!conA.Execute(V.Local.ssql)
+	Function.Intrinsic.Control.Else
+		F.Intrinsic.String.Build("Update A1Warehouse.dbo.UPLOAD Set UPLOADED = '2' Where ROWID = '{0}'", V.DataTable.PC(V.Local.iC).ROWID!FieldVal, V.Local.ssql)
+		F.ODBC.Connection!conA.Execute(V.Local.ssql)
+	Function.Intrinsic.Control.EndIf
+F.Intrinsic.Control.Next(V.Local.iC)
+
+'save to shipment header tracking number
+F.Intrinsic.Control.For(V.Local.iC,0,V.DataTable.PC.RowCount--,1)
+	V.Local.sOrder.Set(V.DataTable.PC(V.Local.iC).Field004!FieldVal)
+	F.Intrinsic.String.LPad(V.Local.sOrder,"0",7,V.Local.sOrder)
+	V.Local.sLine.Set(V.DataTable.PC(V.Local.iC).Field010!FieldVal)
+	F.Intrinsic.String.Left(V.Local.sLine, 3, V.Local.sLine)
+	F.Intrinsic.String.RPad(V.Local.sLine, "0",4, V.Local.sLine)
+	F.Intrinsic.String.Build("Select top 1 Order_Suffix from SHIPMENT_HEADER Where ORDER_NO = '{0}' And Order_REC = '  A' Order By ORDER_SUFFIX desc", V.Local.sOrder, V.Local.ssql)
+	F.ODBC.Connection!conG.ExecuteAndReturn(V.Local.ssql, V.Local.sRet)
+	Function.Intrinsic.Control.If(V.Local.sRet, <>, "")
+		F.Intrinsic.String.Build("Update SHIPMENT_HEADER Set TRACKING_NO = '{0}' Where Order_NO = '{1}' And ORDER_SUFFIX = '{2}' And ORDER_REC = '  A'", V.DataTable.PC(V.Local.iC).Field046!FieldVal, V.Local.sOrder,V.Local.sRet,V.Local.ssql)
+		F.ODBC.Connection!conG.Execute(V.Local.ssql)
+	Function.Intrinsic.Control.EndIf
+F.Intrinsic.Control.Next(V.Local.iC)
+
+F.Data.DataTable.Close("PC")
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("PC_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_Accellos_To_GSS.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.PC.End
+
+Program.Sub.Unload.Start
+F.Intrinsic.Control.SetErrorHandler("Unload_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+V.Local.sFile.Declare(String)
+
+'''''path where file exists
+F.Intrinsic.String.Build("{0}\ADJ_GSS\Running_{1}.txt",V.Caller.FilesDir,"Y",V.Local.sFile)
+''''
+'''''delete file for the next run
+Function.Intrinsic.File.DeleteFile(V.Local.sFile)
+
+'close the connection and program
+F.ODBC.Connection!conG.Close 
+F.ODBC.Connection!conA.Close 
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Unload_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_Accellos_To_GSS.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.End
+
+Function.Intrinsic.Control.EndIf
+Program.Sub.Unload.End
+
+Program.Sub.Is_Running.Start
+F.Intrinsic.Control.SetErrorHandler("Is_Running_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+V.Local..BulkDeclareString(sFile, sCurrentPIDProcess, sDir)
+V.Local.bExists.Declare(Boolean)
+V.Local.iPID.Declare(Long)
+
+'check if file exists
+F.Intrinsic.String.Build("{0}\ADJ_GSS",v.Caller.FilesDir,v.Local.sDir) 
+F.Intrinsic.File.DirExists(v.Local.sDir,v.Local.bExists) 
+F.Intrinsic.Control.If(v.Local.bExists,=,False) 
+	f.Intrinsic.File.CreateDir(v.Local.sDir) 
+Function.Intrinsic.Control.EndIf
+
+'get PID
+V.Local.iPID.Set(V.Ambient.PID)
+
+'check to see if program is already running. First check for file
+F.Intrinsic.String.Build("{0}\ADJ_GSS\Running_{1}.txt",V.Caller.FilesDir,"Y",V.Local.sFile)
+F.Intrinsic.File.Exists(V.Local.sFile,V.Local.bExists)
+F.Intrinsic.Control.If(V.Local.bExists,=,False)
+	'Create Program Status file to let it know its running
+	F.Intrinsic.File.String2File(V.Local.sFile,V.Local.iPID.String)
+Function.Intrinsic.Control.Else
+ 'then the file exists: get the PID from the file to see if the process is still running
+	F.Intrinsic.File.File2String(V.Local.sFile, V.Local.sCurrentPIDProcess)
+	F.Intrinsic.Task.PIDRunning(V.Local.sCurrentPIDProcess,V.Local.bExists)
+	Function.Intrinsic.Control.If(V.Local.bExists, =, TRUE)
+		'the the program is running- don't start new process
+		Function.Intrinsic.Control.End
+
+	Function.Intrinsic.Control.Else
+		'the program has stopped, but did not delete the file. Delete the file and create a new file for current run
+		Function.Intrinsic.File.DeleteFile(V.Local.sFile)
+		F.Intrinsic.File.String2File(V.Local.sFile,V.Local.iPID.String)
+	Function.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Is_Running_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_Accellos_To_GSS.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Is_Running.End
+
+Program.Sub.Comments.Start
+${$0$}$$}$DH1$}$4/10/2017 11:27:19 AM$}$False
+${$3$}$0$}$$}$-1$}$-1$}$$}$1/1/1900$}$Original customer was SMS Millcraft.
+
+This is a re-write of the original script due to many inconsistencies with the original.
+Program.Sub.Comments.End
