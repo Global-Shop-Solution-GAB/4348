@@ -1,0 +1,176 @@
+Program.Sub.Preflight.Start
+V.Global..BulkDeclareString(sServer, sDatabase, sUID, sPWD, sLogin, sProvider)
+V.Global.sLotDate.Declare(String)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+V.Local.sRet.Declare(String)
+'GSS Connection
+F.ODBC.Connection!conG.OpenConnection(v.Ambient.PDSN,v.Ambient.PUser,v.Ambient.PPass)
+'Accellos Connection
+'get Connection string
+F.ODBC.Connection!conG.ExecuteAndReturn("Select rTrim(PROVIDER), rTrim(SERVER), rTrim(DATABASE), rTrim(USER_ID), rTrim(PWD) From GCG_4348_CONNECTION Where NUM = '1'", V.Local.sRet)
+F.Intrinsic.String.Split(V.Local.sRet, "*!*", V.Local.sRet)
+V.Global.sProvider.Set(V.Local.sRet(0))
+V.Global.sServer.Set(V.Local.sRet(1))
+V.Global.sDatabase.Set(V.Local.sRet(2))
+V.Global.sUID.Set(V.Local.sRet(3))
+V.Global.sPWD.Set(V.Local.sRet(4))
+F.Intrinsic.String.Build("Provider={0};Server={1};Database={2};User ID={3};Password={4};", V.Global.sProvider,V.Global.sServer,V.Global.sDatabase,V.Global.sUID,V.Global.sPWD,V.Global.sLogin)
+F.ODBC.Connection!conA.OpenConnection(V.Global.sLogin)
+
+Function.Intrinsic.Control.If(V.Caller.Hook, =, "16520")
+'set global variable
+	F.Intrinsic.String.Build("{0}:{1}", V.Passed.000010, V.Passed.000152, V.Local.sRet)
+	V.Passed.Global.Set(V.Local.sRet)
+Function.Intrinsic.Control.ElseIf(V.Caller.Hook, =, "16504")
+'get value from global variable, this is WIP to Finished Goods
+	V.Global.sLotDate.Set(V.Passed.Global)
+	V.Passed.Global.Set("")
+	Function.Intrinsic.Control.CallSub(dnload)
+Function.Intrinsic.Control.ElseIf(V.Caller.Hook, =, "15040")
+' this is PO Receipts final save
+	Function.Intrinsic.Control.CallSub(po_receipts)
+Function.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.CallSub(unload)
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_WIP_To_Accellos.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.DNLOAD.Start
+F.Intrinsic.Control.SetErrorHandler("DNLOAD_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+V.Local..BulkDeclareString(sFields, sValues, ssql, sRet, sLot, sExpDate, sYear, sMonth, sDay, sPart)
+F.Intrinsic.String.Split(V.Global.sLotDate, ":", V.Local.sRet)
+V.Local.sLot.Set(V.Local.sRet(0))
+V.Local.sExpDate.Set(V.Local.sRet(1))
+V.Local.sPart.Set(V.Passed.000009)
+'see if this part is in product line
+F.Intrinsic.String.Build("Select PL From GCG_4348_PL_CUST Where Part = '{0}' And PL <> ''", V.Local.sPart, V.Local.ssql)
+F.ODBC.Connection!conG.ExecuteAndReturn("Select PL From GCG_4348_PL_CUST Where PL <> ''", V.Local.sRet)
+F.Intrinsic.String.Replace(V.Local.sRet, "*!*", "",V.Local.sRet)
+F.Intrinsic.String.Replace(V.Local.sRet, "#$#", "','",V.Local.sRet)
+
+F.Intrinsic.String.Build("Select PRODUCT_LINE From INVENTORY_MSTR Where PART = '{0}' And PRODUCT_LINE IN ('{1}')", V.Local.sPart, V.Local.sRet,V.Local.ssql) 
+F.ODBC.Connection!conG.ExecuteAndReturn(V.Local.ssql, V.Local.sRet)
+
+Function.Intrinsic.Control.If(V.Local.sRet, <>, "")
+	'rearrange date for Accellos
+	F.Intrinsic.String.Left(V.Local.sExpDate,2,V.Local.sMonth)
+	F.Intrinsic.String.Right(V.Local.sExpDate,4,V.Local.sYear)
+	F.Intrinsic.String.Mid(V.Local.sExpDate, 3, 2, V.Local.sDay)
+	F.Intrinsic.String.Build("{0}/{1}/{2}", V.Local.sMonth, V.Local.sDay, v.Local.sYear, V.Local.sExpDate)
+	
+	V.Local.sFields.Set("DNLOADED, FIELD001, FIELD003, FIELD004, FIELD008, FIELD010, FIELD011, FIELD016, FIELD026")
+	F.Intrinsic.String.Build("'0', 'CA', '{0}', '{1}', '{2}', '{3}',  'LRCVBAY1','{4}', '{5}'", V.Passed.000009, V.Passed.000010, V.Passed.000013, "+", V.Local.sLot, V.Local.sExpDate, V.Local.sValues)
+	
+	'BUILD THE INSERT STATEMENT
+	F.Intrinsic.String.Build("Insert into A1warehouse.dbo.DNLOAD ({0}) Values ({1})",V.Local.sFields,V.Local.sValues,V.Local.ssql)
+	'execute the build
+	F.ODBC.Connection!conA.Execute(v.Local.ssql)
+Function.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("DNLOAD_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_WIP_To_Accellos.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.DNLOAD.End
+
+Program.Sub.Unload.Start
+F.Intrinsic.Control.SetErrorHandler("Unload_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+'close the connection and program
+F.ODBC.Connection!conG.Close 
+F.ODBC.Connection!conA.Close 
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Unload_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_WIP_To_Accellos.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.End
+
+Function.Intrinsic.Control.EndIf
+Program.Sub.Unload.End
+
+Program.Sub.PO_RECEIPTS.Start
+F.Intrinsic.Control.SetErrorHandler("PO_RECEIPTS_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+V.Local..BulkDeclareString(sReceiver,sRet, sFirst, sLast, ssql, sFilter, sExpDate, sMonth, sDay, sYear, sValues, sFields)
+V.Local.iC.Declare(Long)
+
+'get receiver
+V.Local.sFirst.Set(V.Passed.000010)
+V.Local.sLast.Set(V.Passed.000153)
+F.Intrinsic.String.Build("{0}{1}", V.Local.sFirst, V.Local.sLast, V.Local.sReceiver)
+'select from item history based on receiver
+F.Intrinsic.String.Build("Select rTrim(PART) as PART, LOCATION, QUANTITY, LOT, rTrim(PART)+'-'+rTrim(LOT) as PLOT, '' as DATE_EXP, '' as PL From V_ITEM_HISTORY Where RECEIVER = '{0}'", V.Local.sReceiver, V.Local.ssql)
+F.Data.DataTable.CreateFromSQL("PO", "conG", V.Local.ssql)
+'grab expire date
+F.Data.Dictionary.CreateFromSQL("dict", "conG","Select rTrim(PART)+'-'+rTrim(LOT) as PLOT, DATE_EXPIRATION From ITEM_MASTER")
+F.Data.Dictionary.SetDefaultReturn("dict", "01012050")
+F.Data.DataTable.FillFromDictionary("PO", "dict", "PLOT", "DATE_EXP")
+F.Data.Dictionary.Close("dict")
+'get Product Line
+F.Data.Dictionary.CreateFromSQL("dict", "conG","Select rTrim(PART) as PART, PRODUCT_LINE as PL From INVENTORY_MSTR")
+F.Data.Dictionary.SetDefaultReturn("dict", "")
+F.Data.DataTable.FillFromDictionary("PO", "dict", "PART", "PL")
+F.Data.Dictionary.Close("dict")
+
+'loop through datatable_V- dnload where product line in GCG_4348_PL_CUST
+F.Data.DataTable.CreateFromSQL("PL", "conG", "Select PL from GCG_4348_PL_CUST where PL <> ''")
+F.Data.DataView.Create("PL", "PL_V")
+Function.Data.DataView.ToString("PL", "PL_V", "PL", "*!*", "@!@", V.Local.sRet)
+F.Intrinsic.String.Replace(V.Local.sRet, "@!@", "','", V.Local.sRet)
+F.Intrinsic.String.Build("PL In ('{0}')", V.Local.sRet, V.Local.sFilter)
+F.Data.DataView.Create("PO", "PO_V")
+Function.Data.DataView.SetFilter("PO", "PO_V", V.Local.sFilter)
+F.Intrinsic.Control.For(V.Local.iC, 0, V.DataView.PO!PO_V.RowCount--, 1)
+	V.Local.sExpDate.Set(V.DataView.PO!PO_V(V.Local.iC).DATE_EXP!FieldVal)
+	F.Intrinsic.String.Left(V.Local.sExpDate,2,V.Local.sMonth)
+	F.Intrinsic.String.Right(V.Local.sExpDate,4,V.Local.sYear)
+	F.Intrinsic.String.Mid(V.Local.sExpDate, 3, 2, V.Local.sDay)
+	F.Intrinsic.String.Build("{0}/{1}/{2}", V.Local.sMonth, V.Local.sDay, v.Local.sYear, V.Local.sExpDate)
+	V.Local.sFields.Set("DNLOADED, FIELD001, FIELD003, FIELD004, FIELD008, FIELD010, FIELD011, FIELD016, FIELD026")
+	F.Intrinsic.String.Build("'0', 'CA', '{0}', '{1}', '{2}', '{3}',  'LRCVBAY1','{4}', '{5}'", V.DataView.PO!PO_V(V.Local.iC).PART!FieldVal, V.DataView.PO!PO_V(V.Local.iC).LOCATION!FieldVal, V.DataView.PO!PO_V(V.Local.iC).QUANTITY!FieldVal, "+", V.DataView.PO!PO_V(V.Local.iC).LOT!FieldVal, V.Local.sExpDate, V.Local.sValues)
+	'BUILD THE INSERT STATEMENT
+	F.Intrinsic.String.Build("Insert into A1warehouse.dbo.DNLOAD ({0}) Values ({1})",V.Local.sFields,V.Local.sValues,V.Local.ssql)
+	'execute the build
+	F.ODBC.Connection!conA.Execute(v.Local.ssql)
+F.Intrinsic.Control.Next(V.Local.iC)
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("PO_RECEIPTS_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_WIP_To_Accellos.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.PO_RECEIPTS.End
+
+Program.Sub.Comments.Start
+${$0$}$$}$DH1$}$4/26/2017 4:59:43 PM$}$False
+${$3$}$0$}$$}$-1$}$-1$}$$}$1/1/1900$}$Original customer was SMS Millcraft.
+
+This is a re-write of the original script due to many inconsistencies with the original.
+Program.Sub.Comments.End
