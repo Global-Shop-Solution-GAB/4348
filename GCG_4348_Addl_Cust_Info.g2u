@@ -1,0 +1,143 @@
+Program.Sub.ScreenSU.Start
+Gui.Form..Create
+Gui.Form..Size(3450,3360)
+Gui.Form..MinX(0)
+Gui.Form..MinY(0)
+Gui.Form..Position(0,0)
+Gui.Form..BackColor(-2147483633)
+Gui.Form..MousePointer(0)
+Gui.Form..Event(UnLoad,Form_UnLoad)
+Gui.Form..Caption("Shipping")
+Gui.Form.lbl1.Create(Label,"Label",True,1005,255,0,60,135,True,0,"Arial",8,-2147483633,0)
+Gui.Form.txtLabel.Create(TextBox,"",True,3105,300,0,45,405,True,0,"Arial",8,-2147483643,1)
+Gui.Form.txtLabel.MaxLength(10)
+Gui.Form.lbl2.Create(Label,"Packing Slip",True,1335,255,0,90,855,True,0,"Arial",8,-2147483633,0)
+Gui.Form.txtPackingSlip.Create(TextBox,"",True,3105,300,0,30,1125,True,0,"Arial",8,-2147483643,1)
+Gui.Form.txtPackingSlip.MaxLength(15)
+Gui.Form.cmdSave.Create(Button)
+Gui.Form.cmdSave.Size(855,375)
+Gui.Form.cmdSave.Position(1980,2340)
+Gui.Form.cmdSave.Caption("Save")
+Gui.Form.cmdSave.Event(Click,cmdSave)
+Gui.Form.txtShipper.Create(TextBox,"",True,3135,300,0,45,1845,True,0,"Arial",8,-2147483643,1)
+Gui.Form.txtShipper.MaxLength(10)
+Gui.Form.lbl3.Create(Label,"Shipper",True,1335,255,0,60,1575,True,0,"Arial",8,-2147483633,0)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+V.Global.sCustomer.Declare(String)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+Function.Intrinsic.Control.If(V.Caller.Hook,=,"14350") 
+	'set Ship Details script 3
+	V.Passed.000203.Set("Ship Details")
+Function.Intrinsic.Control.ElseIf(V.Caller.Hook,=,"14380") 
+	'get info from database
+	V.Global.sCustomer.Set(v.Passed.000002) 
+	Function.Intrinsic.Control.If(V.Global.sCustomer, = , "")
+		F.Intrinsic.UI.Msgbox("Customer Must Be Entered")
+		Function.Intrinsic.Control.End
+
+	Function.Intrinsic.Control.EndIf
+	F.ODBC.Connection!conG.OpenConnection(v.Ambient.PDSN,v.Ambient.PUser,v.Ambient.PPass)
+	Function.Intrinsic.Control.CallSub(load_info)
+	Gui.Form..Show
+Function.Intrinsic.Control.Else
+	Function.Intrinsic.Control.End
+
+Function.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_Addl_Cust_Info.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(form_unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.Load_Info.Start
+F.Intrinsic.Control.SetErrorHandler("Load_Info_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+V.Local..BulkDeclareString(ssql, sRet)
+
+'populate info from database
+F.Intrinsic.String.Build("Select * From GCG_4348_SHIP_INFO Where CUSTOMER = '{0}'", V.Global.sCustomer, V.Local.ssql)
+F.ODBC.Connection!conG.ExecuteAndReturn(V.Local.ssql, V.Local.sRet)
+F.Intrinsic.String.Split(V.Local.sRet, "*!*", V.Local.sRet)
+Function.Intrinsic.Control.If(V.Local.sRet, =, "")
+	'need to add customer
+	F.Intrinsic.String.Build("Insert Into GCG_4348_SHIP_INFO (CUSTOMER) Values ('{0}')", V.Global.sCustomer, V.Local.ssql)
+	F.ODBC.Connection!conG.Execute(V.Local.ssql)
+Function.Intrinsic.Control.Else
+	'then we have values, show them
+	GUI.Form.txtLabel.Text(V.Local.sRet(1))
+	GUI.Form.txtPackingSlip.Text(V.Local.sRet(2))
+	GUI.Form.txtShipper.Text(V.Local.sRet(3))
+Function.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Load_Info_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_Addl_Cust_Info.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(form_unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Load_Info.End
+
+Program.Sub.cmdSave.Start
+F.Intrinsic.Control.SetErrorHandler("Load_Info_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+V.Local..BulkDeclareString(ssql, sLabel, sPackingSlip, sShipper)
+
+V.Local.sLabel.Set(V.Screen.Form!txtLabel.Text)
+V.Local.sPackingSlip.Set(V.Screen.Form!txtPackingSlip.Text)
+V.Local.sShipper.Set(V.Screen.Form!txtShipper.Text)
+
+F.Intrinsic.String.Build("Update GCG_4348_SHIP_INFO Set LABEL = '{0}', PACKING_SLIP = '{1}', Shipper = '{2}' Where CUSTOMER = '{3}'", V.Local.sLabel, V.Local.sPackingSlip, V.Local.sShipper,V.Global.sCustomer, V.Local.ssql)
+F.ODBC.Connection!conG.Execute(V.Local.ssql)
+Function.Intrinsic.Control.CallSub(form_unload)
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Load_Info_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_Addl_Cust_Info.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(form_unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.cmdSave.End
+
+Program.Sub.Form_UnLoad.Start
+F.Intrinsic.Control.SetErrorHandler("cmdSave_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+GUI.Form..Visible(False)
+F.ODBC.Connection!conG.Close
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("cmdSave_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_Addl_Cust_Info.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.End
+
+Function.Intrinsic.Control.EndIf
+Program.Sub.Form_UnLoad.End
+
+Program.Sub.Comments.Start
+${$0$}$$}$DH1$}$4/30/2017 9:12:54 AM$}$False
+${$3$}$0$}$$}$-1$}$-1$}$$}$1/1/1900$}$Original customer was SMS Millcraft.
+
+This is a re-write of the original script due to many inconsistencies with the original.
+Program.Sub.Comments.End
