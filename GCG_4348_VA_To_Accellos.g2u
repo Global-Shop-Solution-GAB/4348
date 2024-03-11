@@ -1,0 +1,121 @@
+Program.Sub.Preflight.Start
+V.Global..BulkDeclareString(sServer, sDatabase, sUID, sPWD, sLogin, sProvider)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+V.Local..BulkDeclareString(sRev, sPart, sLoc, sRet)
+
+F.ODBC.Connection!conG.OpenConnection(v.Ambient.PDSN,v.Ambient.PUser,v.Ambient.PPass)
+'Accellos Connection
+'get Connection string
+F.ODBC.Connection!conG.ExecuteAndReturn("Select rTrim(PROVIDER), rTrim(SERVER), rTrim(DATABASE), rTrim(USER_ID), rTrim(PWD) From GCG_4348_CONNECTION Where NUM = '1'", V.Local.sRet)
+F.Intrinsic.String.Split(V.Local.sRet, "*!*", V.Local.sRet)
+V.Global.sProvider.Set(V.Local.sRet(0))
+V.Global.sServer.Set(V.Local.sRet(1))
+V.Global.sDatabase.Set(V.Local.sRet(2))
+V.Global.sUID.Set(V.Local.sRet(3))
+V.Global.sPWD.Set(V.Local.sRet(4))
+F.Intrinsic.String.Build("Provider={0};Server={1};Database={2};User ID={3};Password={4};", V.Global.sProvider,V.Global.sServer,V.Global.sDatabase,V.Global.sUID,V.Global.sPWD,V.Global.sLogin)
+F.ODBC.Connection!conA.OpenConnection(V.Global.sLogin)
+
+Function.Intrinsic.Control.If(V.Caller.Hook,=,10185)
+	V.Local.sRev.Set(V.Passed.000008)
+	V.Local.sPart.Set(V.Passed.000007)
+	V.Local.sLoc.Set(V.Passed.000009)
+	'put the part and rev together
+	F.Intrinsic.String.GSSPartString(V.Local.sPart.Trim,V.Local.sRev.Trim,V.Local.sPart)
+	Function.Intrinsic.Control.CallSub(createfile, "sPart", V.Local.sPart, "sLoc", V.Local.sLoc)
+Function.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.CallSub(unload)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_VA_To_Accellos.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.Unload.Start
+F.Intrinsic.Control.SetErrorHandler("Unload_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+'close the connection and program
+F.ODBC.Connection!conG.Close 
+F.ODBC.Connection!conA.Close 
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Unload_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_VA_To_Accellos.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.End
+
+Function.Intrinsic.Control.EndIf
+Program.Sub.Unload.End
+
+Program.Sub.CreateFile.Start
+F.Intrinsic.Control.SetErrorHandler("CreateFile_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+V.Local..BulkDeclareString(ssql, sPart, sLoc, sDesc, sCost, sPrice, sPL, sRet)
+V.Local.iC.Declare(Long, 0)
+
+'get product line list
+F.ODBC.Connection!conG.ExecuteAndReturn("Select PL From GCG_4348_PL_CUST Where PL <> ''", V.Local.sRet)
+F.Intrinsic.String.Replace(V.Local.sRet, "*!*", "",V.Local.sRet)
+F.Intrinsic.String.Replace(V.Local.sRet, "#$#", "','",V.Local.sRet)
+
+'select info
+F.Intrinsic.String.Build("Select PART, Location, Description, AMT_Cost, AMT_Price, Product_Line From INVENTORY_MSTR Where Part = '{0}' And Location = '{1}' And PRODUCT_LINE In ('{2}')", V.Args.sPart, V.Args.sLoc, V.Local.sRet,V.Local.ssql)
+'to datatable
+F.Data.DataTable.CreateFromSQL("VA", "conG", V.Local.ssql)
+Function.Intrinsic.Control.If(V.DataTable.VA.RowCount, >, 0)
+'then we write to the table
+	'Part
+	V.Local.sPart.Set(V.DataTable.VA(V.Local.iC).Part!FieldValTrim)
+	
+	'Description
+	V.Local.sDesc.Set(V.DataTable.VA(V.Local.iC).Description!FieldValTrim)
+	
+	'Cost
+	V.Local.sCost.Set(V.DataTable.VA(V.Local.iC).AMT_Cost!FieldValTrim)
+	
+	'Price
+	V.Local.sPrice.Set(V.DataTable.VA(V.Local.iC).AMT_Price!FieldValTrim)
+	
+	'Product Line
+	V.Local.sPL.Set(V.DataTable.VA(V.Local.iC).Product_Line!FieldValTrim)
+	
+	F.Intrinsic.String.Build("Insert Into A1Warehouse.dbo.DNLOAD (DNLOADED, FIELD001, FIELD002, FIELD004, FIELD009, FIELD010, FIELD043, FIELD012, FIELD013, FIELD020, FIELD021, FIELD032, FIELD033, FIELD034, FIELD035, FIELD036,FIELD037,FIELD038, FIELD008) Values ('0','VA','{0}','{1}','{2}','{3}','{4}',0,0,'0100000000','0100000000','Y',0,0,0,0,0,'1','{5}');", V.Local.sPart, V.Local.sDesc, V.Local.sCost, V.Local.sPrice,V.Local.sPL, V.Local.sPart,V.Local.ssql)
+	
+	'write to table
+	Function.ODBC.Connection!conA.Execute(V.Local.ssql)
+Function.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("CreateFile_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_VA_To_Accellos.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.CreateFile.End
+
+Program.Sub.Comments.Start
+${$0$}$$}$DH1$}$4/3/2017 9:56:53 AM$}$False
+${$3$}$0$}$$}$-1$}$-1$}$$}$1/1/1900$}$Original customer was SMS Millcraft.
+
+This is a re-write of the original script due to many inconsistencies with the original.
+Program.Sub.Comments.End
