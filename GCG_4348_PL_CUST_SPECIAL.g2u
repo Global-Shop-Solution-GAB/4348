@@ -1,0 +1,191 @@
+Program.Sub.ScreenSU.Start
+Gui.Form..Create
+Gui.Form..Caption("To Accellos")
+Gui.Form..Size(3900,6765)
+Gui.Form..MinX(0)
+Gui.Form..MinY(0)
+Gui.Form..Position(0,0)
+Gui.Form..BackColor(-2147483633)
+Gui.Form..MousePointer(0)
+Gui.Form..Event(UnLoad,Form_UnLoad)
+Gui.Form.txtPL.Create(TextBox,"",True,1215,300,0,720,360,True,0,"Arial",8,-2147483643,1)
+Gui.Form.txtPL.Locked(True)
+Gui.Form.lbl1.Create(Label,"Product Line",True,1245,255,0,180,120,True,0,"Arial",8,-2147483633,0)
+Gui.Form.cmdPL.Create(Button)
+Gui.Form.cmdPL.Size(570,375)
+Gui.Form.cmdPL.Position(2040,315)
+Gui.Form.cmdPL.Caption("^")
+Gui.Form.cmdPL.Event(Click,cmd_BRW_PL_Click)
+Gui.Form.GsGridPL.Create(GsGridControl)
+Gui.Form.GsGridPL.Size(2355,5355)
+Gui.Form.GsGridPL.Position(570,1140)
+Gui.Form.GsGridPL.Event(RowClick,GsGridPL_RowClick)
+Gui.Form.cmdAddPL.Create(Button)
+Gui.Form.cmdAddPL.Size(855,375)
+Gui.Form.cmdAddPL.Position(690,720)
+Gui.Form.cmdAddPL.Caption("Add")
+Gui.Form.cmdAddPL.Event(Click,cmdAddPL_Click)
+Gui.Form.cmdDelete_PL.Create(Button)
+Gui.Form.cmdDelete_PL.Size(855,375)
+Gui.Form.cmdDelete_PL.Position(1920,720)
+Gui.Form.cmdDelete_PL.Caption("Delete")
+Gui.Form.cmdDelete_PL.Event(Click,cmdDelete_PL_Click)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+V.Global.iRow.Declare(Long)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+F.ODBC.Connection!conG.OpenConnection(v.Ambient.PDSN,v.Ambient.PUser,v.Ambient.PPass)
+Function.Intrinsic.Control.CallSub(set_tables)
+V.Global.iRow.Set(-1)
+GUI.Form..Show
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_PL_CUST_SPECIAL.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(form_unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.cmd_BRW_PL_Click.Start
+F.Intrinsic.Control.SetErrorHandler("cmd_BRW_PL_Click_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+V.Local.sRet.Declare(String)
+Function.Intrinsic.UI.Browser(130, "", V.Local.sRet)
+Function.Intrinsic.Control.If(V.Local.sRet, <>, "***CANCEL***")
+	F.Intrinsic.String.Left(V.Local.sRet, 2, V.Local.sRet)
+	GUI.Form.txtPL.Text(V.Local.sRet)
+Function.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("cmd_BRW_PL_Click_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_PL_CUST_SPECIAL.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(form_unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.cmd_BRW_PL_Click.End
+
+Program.Sub.cmdAddPL_Click.Start
+F.Intrinsic.Control.SetErrorHandler("cmdAddPL_Click_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+V.Local..BulkDeclareString(sTemp, ssql)
+V.Local.sTemp.Set(V.Screen.Form!txtPL.Text)
+Function.Intrinsic.Control.If(V.Local.sTemp, <>, "")
+	F.Intrinsic.String.Build("Insert Into GCG_4348_PL_CUST (PL) Values ('{0}')", V.Local.sTemp, V.Local.ssql)
+	F.ODBC.Connection!conG.Execute(V.Local.ssql)
+	Function.Intrinsic.Control.CallSub(set_tables)
+Function.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("cmdAddPL_Click_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_PL_CUST_SPECIAL.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(form_unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.cmdAddPL_Click.End
+
+Program.Sub.cmdDelete_PL_Click.Start
+F.Intrinsic.Control.SetErrorHandler("cmdDelete_PL_Click_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+V.Local..BulkDeclareString(sTemp, ssql)
+Function.Intrinsic.Control.If(V.Global.iRow, =, -1)
+	F.Intrinsic.UI.Msgbox("Choose a Row to Delete")
+	Function.Intrinsic.Control.ExitSub
+Function.Intrinsic.Control.Else
+	Gui.Form.GsGridPL.GetCellValue("Grid_PL", 0, V.Global.iRow, V.Local.sTemp)
+	F.Intrinsic.String.Build("Delete GCG_4348_PL_CUST Where PL = '{0}'", V.Local.sTemp, V.Local.ssql)
+	F.ODBC.Connection!conG.Execute(V.Local.ssql)
+	Function.Intrinsic.Control.CallSub(set_tables)
+Function.Intrinsic.Control.EndIf
+V.Global.iRow.Set(-1)
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("cmdDelete_PL_Click_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_PL_CUST_SPECIAL.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(form_unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.cmdDelete_PL_Click.End
+
+Program.Sub.Form_UnLoad.Start
+F.Intrinsic.Control.SetErrorHandler("Form_UnLoad_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+GUI.Form..Visible(False)
+F.ODBC.Connection!conG.Close
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Form_UnLoad_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_PL_CUST_SPECIAL.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.End
+
+Function.Intrinsic.Control.EndIf
+Program.Sub.Form_UnLoad.End
+
+Program.Sub.Set_Tables.Start
+F.Intrinsic.Control.SetErrorHandler("Set_Tables_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+gui.Form.GsGridPL.Anchor(7)
+F.Data.DataTable.CreateFromSQL("PL","conG","Select PL From GCG_4348_PL_CUST Where PL <> ''")
+GUI.Form.GsGridPL.AddGridviewFromDatatable("Grid_PL", "PL")
+Gui.Form.GsGridPL.SetColumnProperty("Grid_PL","PL","ReadOnly",true)
+Gui.Form.GsGridPL.SetColumnProperty("Grid_PL","PL","AllowEdit",false)
+Gui.Form.GsGridPL.SetColumnProperty("Grid_PL","PL","HeaderHAlignment","Center")
+Gui.Form.GsGridPL.SetColumnProperty("Grid_PL","PL","CellHAlignment","Center")
+Gui.Form.GsGridPL.SetColumnProperty("Grid_PL","PL","Caption","Product Line")
+GUI.Form.GsGridPL.MainView("Grid_PL")
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Set_Tables_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_PL_CUST_SPECIAL.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(form_unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Set_Tables.End
+
+Program.Sub.GsGridPL_RowClick.Start
+F.Intrinsic.Control.SetErrorHandler("GsGridPL_RowClick_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+V.Global.iRow.Set(Variable.Args.RowIndex)
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("GsGridPL_RowClick_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_PL_CUST_SPECIAL.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(form_unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.GsGridPL_RowClick.End
+
+Program.Sub.Comments.Start
+${$0$}$$}$DH1$}$5/1/2017 11:13:12 AM$}$False
+${$3$}$0$}$$}$-1$}$-1$}$$}$1/1/1900$}$Original customer was SMS Millcraft.
+
+This is a re-write of the original script due to many inconsistencies with the original.
+Program.Sub.Comments.End
