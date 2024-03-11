@@ -1,0 +1,122 @@
+Program.Sub.Preflight.Start
+V.Global..BulkDeclareString(sServer, sDatabase, sUID, sPWD, sLogin, sProvider)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+V.Local.sRet.Declare(String)
+'this is for Cycle Count from Accellos
+'GSS Connection
+F.ODBC.Connection!conG.OpenConnection(v.Ambient.PDSN,v.Ambient.PUser,v.Ambient.PPass)
+'Accellos Connection
+
+'get Connection string
+F.ODBC.Connection!conG.ExecuteAndReturn("Select rTrim(PROVIDER), rTrim(SERVER), rTrim(DATABASE), rTrim(USER_ID), rTrim(PWD) From GCG_4348_CONNECTION Where NUM = '1'", V.Local.sRet)
+F.Intrinsic.String.Split(V.Local.sRet, "*!*", V.Local.sRet)
+
+V.Global.sProvider.Set(V.Local.sRet(0))
+V.Global.sServer.Set(V.Local.sRet(1))
+V.Global.sDatabase.Set(V.Local.sRet(2))
+V.Global.sUID.Set(V.Local.sRet(3))
+V.Global.sPWD.Set(V.Local.sRet(4))
+
+F.Intrinsic.String.Build("Provider={0};Server={1};Database={2};User ID={3};Password={4};", V.Global.sProvider,V.Global.sServer,V.Global.sDatabase,V.Global.sUID,V.Global.sPWD,V.Global.sLogin)
+F.ODBC.Connection!conA.OpenConnection(V.Global.sLogin)
+
+Function.Intrinsic.Control.CallSub(upload_records)
+Function.Intrinsic.Control.CallSub(unload)
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_Accellos_Cycle_Count.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.Upload_Records.Start
+F.Intrinsic.Control.SetErrorHandler("Upload_Records_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+V.Local..BulkDeclareString(ssql, sPart, sQTY,sPath, sFile, sLot)
+V.Local.iC.Declare(Long)
+
+
+'build a table for FIELD001 = 'SC' and UPLOADED = '0'
+V.Local.ssql.Set("Select FIELD004, Sum(Cast(Field007 As Float)) As Field007, Field011 From A1Warehouse.dbo.UPLOAD Where FIELD001 = 'SC' And UPLOADED = '0' Group By FIELD004, Field011")
+F.Data.DataTable.CreateFromSQL("SC", "conA", V.Local.ssql, TRUE)
+
+'create dictionary to fill with number of records for each inventory part in history
+F.Data.DataTable.AddColumn("SC", "BEG", "String")
+F.Data.Dictionary.CreateFromSQL("dict", "conG", "Select rTrim(PART) As FIELD004 , COUNT(PART) As Beg FROM V_INVENTORY_HIST Group By PART")
+F.Data.Dictionary.SetDefaultReturn("dict", "0")
+F.Data.DataTable.FillFromDictionary("SC", "dict", "FIELD004", "Beg")
+F.Data.Dictionary.Close("dict")
+
+'loop through datatable
+F.Intrinsic.Control.For(V.Local.iC,0,V.DataTable.SC.RowCount--,1)
+	V.Local.sPart.Set(V.DataTable.SC(V.Local.iC).FIELD004!FieldValTrim)
+	V.Local.sQTY.Set(V.DataTable.SC(V.Local.iC).FIELD007!FieldValTrim)
+	V.Local.sLot.Set(V.DataTable.SC(V.Local.iC).FIELD011!FieldValTrim)
+	'F.Intrinsic.String.Build("{0}P16,{1},,{2},,,,,", V.Local.sFile, V.Local.sPart, V.Local.sQTY, V.Local.sFile)
+	F.Intrinsic.String.Build("{0}P16,{1},,{2},{3},{4},,,", V.Local.sFile, V.Local.sPart, V.Local.sQTY, "ACELLO",V.Local.sLot,V.Local.sFile)
+	F.Intrinsic.String.Build("{0}{1}", V.Local.sFile, V.Ambient.NewLine, V.Local.sFile)
+F.Intrinsic.Control.Next(V.Local.iC)
+
+F.Intrinsic.String.Build("{0}\FILES\BARINV.TXT", V.Caller.GlobalDir, V.Local.sPath)
+F.Intrinsic.File.String2File(V.Local.sPath, V.Local.sFile)
+
+Function.Global.General.CallWrapperSync(50, "INV516UL/A")
+'Function.Global.General.CallWrapperSync(50, "INV516UL/NS")
+
+' update table with a 1> everything was read and transferred correctly
+'create dictionary to fill with number of records for each inventory part in history
+F.Data.DataTable.AddColumn("SC", "END", "String")
+F.Data.Dictionary.CreateFromSQL("dict", "conG", "Select rTrim(PART) As FIELD004 , COUNT(PART) As Beg FROM V_INVENTORY_HIST Group By PART")
+F.Data.Dictionary.SetDefaultReturn("dict", "0")
+F.Data.DataTable.FillFromDictionary("SC", "dict", "FIELD004", "END")
+F.Data.Dictionary.Close("dict")
+
+'send back results > all can be changed at once
+F.ODBC.Connection!conA.Execute("Update A1Warehouse.dbo.UPLOAD Set UPLOADED = '1' Where FIELD001 = 'SC'")
+
+'close table
+F.Data.DataTable.Close("SC")
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Upload_Records_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_Accellos_Cycle_Count.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Upload_Records.End
+
+Program.Sub.Unload.Start
+F.Intrinsic.Control.SetErrorHandler("Unload_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+'close the connection and program
+F.ODBC.Connection!conG.Close 
+F.ODBC.Connection!conA.Close 
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Unload_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_Accellos_Cycle_Count.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.End
+
+Function.Intrinsic.Control.EndIf
+Program.Sub.Unload.End
+
+Program.Sub.Comments.Start
+${$0$}$$}$DH1$}$5/4/2017 11:33:48 AM$}$False
+Program.Sub.Comments.End
