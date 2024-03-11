@@ -1,0 +1,156 @@
+Program.Sub.ScreenSU.Start
+Gui.Form..Create
+Gui.Form..Caption("Credentials")
+Gui.Form..Size(3735,4740)
+Gui.Form..MinX(0)
+Gui.Form..MinY(0)
+Gui.Form..Position(0,0)
+Gui.Form..BackColor(-2147483633)
+Gui.Form..MousePointer(0)
+Gui.Form..Event(UnLoad,Form_UnLoad)
+Gui.Form.cmdSave.Create(Button)
+Gui.Form.cmdSave.Size(855,375)
+Gui.Form.cmdSave.Position(2505,3705)
+Gui.Form.cmdSave.Caption("Save")
+Gui.Form.cmdSave.Event(Click,cmdSave_Click)
+Gui.Form.txtProvider.Create(TextBox,"",True,3360,300,0,60,435,True,0,"Arial",8,-2147483643,1)
+Gui.Form.lbl1.Create(Label,"Provider",True,1935,255,0,60,135,True,0,"Arial",8,-2147483633,0)
+Gui.Form.txtServer.Create(TextBox,"",True,3405,300,0,30,1125,True,0,"Arial",8,-2147483643,1)
+Gui.Form.lbl2.Create(Label,"Server",True,1935,255,0,90,885,True,0,"Arial",8,-2147483633,0)
+Gui.Form.lbl3.Create(Label,"Database",True,1935,255,0,60,1605,True,0,"Arial",8,-2147483633,0)
+Gui.Form.txtDatabase.Create(TextBox,"",True,3390,300,0,45,1845,True,0,"Arial",8,-2147483643,1)
+Gui.Form.lbl4.Create(Label,"User ID",True,1935,255,0,60,2325,True,0,"Arial",8,-2147483633,0)
+Gui.Form.txtUID.Create(TextBox,"",True,3390,300,0,60,2595,True,0,"Arial",8,-2147483643,1)
+Gui.Form.lbl5.Create(Label,"Password",True,1935,255,0,75,3060,True,0,"Arial",8,-2147483633,0)
+Gui.Form.txtPWD.Create(TextBox,"",True,3405,300,0,30,3300,True,0,"Arial",8,-2147483643,1)
+Gui.Form.cmdTest.Create(Button)
+Gui.Form.cmdTest.Size(855,375)
+Gui.Form.cmdTest.Position(660,3705)
+Gui.Form.cmdTest.Caption("Test")
+Gui.Form.cmdTest.Event(Click,cmdTest_Click)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+v.Local.sRet.Declare(String)
+
+'GSS Connection
+F.ODBC.Connection!conG.OpenConnection(v.Ambient.PDSN,v.Ambient.PUser,v.Ambient.PPass)
+
+F.ODBC.Connection!conG.ExecuteAndReturn("Select * From GCG_4348_CONNECTION Where NUM = '1'", V.Local.sRet)
+
+Function.Intrinsic.Control.If(V.Local.sRet, =, "")
+	'then this is the first time- add a row to the table setting Num = 1
+	F.ODBC.Connection!conG.Execute("Insert Into GCG_4348_CONNECTION (NUM) Values (1)")
+Function.Intrinsic.Control.Else
+	'populate text boxes with current values
+	F.Intrinsic.String.Split(V.Local.sRet, "*!*", V.Local.sRet)
+	GUI.Form.txtProvider.Text(V.Local.sRet(1))
+	Gui.Form.txtServer.Text(V.Local.sRet(2))
+	GUI.Form.txtDatabase.Text(V.Local.sRet(3))
+	GUI.Form.txtUID.Text(V.Local.sRet(4))
+	GUI.Form.txtPWD.Text(V.Local.sRet(5))
+Function.Intrinsic.Control.EndIf
+GUI.Form..Show
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_Connection.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(form_unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.Form_UnLoad.Start
+F.Intrinsic.Control.SetErrorHandler("Form_UnLoad_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+GUI.Form..Visible(False)
+F.ODBC.Connection!conG.Close
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Form_UnLoad_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_Connection.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.End
+
+Function.Intrinsic.Control.EndIf
+Program.Sub.Form_UnLoad.End
+
+Program.Sub.cmdSave_Click.Start
+F.Intrinsic.Control.SetErrorHandler("cmdSave_Click_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+V.Local..BulkDeclareString(sServer, sDatabase, sUID, sPWD, sLogin, sProvider, ssql)
+
+V.Local.sProvider.Set(V.Screen.Form!txtProvider.Text)
+V.Local.sServer.Set(V.Screen.Form!txtServer.Text)
+V.Local.sDatabase.Set(V.Screen.Form!txtDatabase.Text)
+V.Local.sUID.Set(V.Screen.Form!txtUID.Text)
+V.Local.sPWD.Set(V.Screen.Form!txtPWD.Text)
+
+
+
+F.Intrinsic.String.Build("UPDATE GCG_4348_CONNECTION Set PROVIDER = '{0}', SERVER = '{1}', DATABASE = '{2}', USER_ID = '{3}', PWD = '{4}' Where NUM = '1'",V.Local.sProvider,V.Local.sServer,V.Local.sDatabase, V.Local.sUID,V.Local.sPWD, V.Local.ssql)
+F.ODBC.Connection!conG.Execute(V.Local.ssql)
+F.Intrinsic.Control.CallSub(form_unload)
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("cmdSave_Click_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_Connection.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(form_unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.cmdSave_Click.End
+
+Program.Sub.cmdTest_Click.Start
+F.Intrinsic.Control.SetErrorHandler("cmdSave_Click_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+'this will test the connection 
+
+V.Local..BulkDeclareString(sServer, sDatabase, sUID, sPWD, sLogin, sProvider)
+
+V.Local.sProvider.Set(V.Screen.Form!txtProvider.Text)
+V.Local.sServer.Set(V.Screen.Form!txtServer.Text)
+V.Local.sDatabase.Set(V.Screen.Form!txtDatabase.Text)
+V.Local.sUID.Set(V.Screen.Form!txtUID.Text)
+V.Local.sPWD.Set(V.Screen.Form!txtPWD.Text)
+
+F.Intrinsic.String.Build("Provider={0};Server={1};Database={2};User ID={3};Password={4};", V.Local.sProvider,V.Local.sServer,V.Local.sDatabase,V.Local.sUID,V.Local.sPWD,V.Local.sLogin)
+F.ODBC.Connection!conA.OpenConnection(V.Local.sLogin)
+F.Intrinsic.UI.Msgbox("Connection String Valid")
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("cmdSave_Click_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,=,20011)
+		F.Intrinsic.UI.Msgbox("Connection String Invalid")
+		Function.Intrinsic.Control.ExitSub
+	Function.Intrinsic.Control.Else
+		Function.Intrinsic.String.Concat("Project: GCG_4348_Connection.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+		Function.Intrinsic.Control.CallSub(form_unload)
+	Function.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndIf
+Program.Sub.cmdTest_Click.End
+
+Program.Sub.Comments.Start
+${$0$}$$}$DH1$}$4/30/2017 8:19:35 AM$}$False
+${$3$}$0$}$$}$-1$}$-1$}$$}$1/1/1900$}$Original customer was SMS Millcraft.
+
+This is a re-write of the original script due to many inconsistencies with the original.
+Program.Sub.Comments.End
