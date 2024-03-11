@@ -1,0 +1,359 @@
+Program.Sub.Preflight.Start
+V.Global..BulkDeclareString(sServer, sDatabase, sUID, sPWD, sLogin, sProvider, sOrderNO, sPL, sTextFile)
+
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+'this will be for the online update of orders onlt
+'error handling messages from main and unload will be removed since it runs on the online update
+'the other messages will remain since we only want to rid the connection error
+
+V.Local..BulkDeclareString(sRet, sFile, ssql, sDir)
+V.Local.iC.Declare(Long)
+V.Local.bExists.Declare(Boolean)
+V.Global.sTextFile.Set("")
+
+'GSS Connection
+F.ODBC.Connection!conG.OpenConnection(v.Ambient.PDSN,v.Ambient.PUser,v.Ambient.PPass, 100000000)
+'Accellos Connection
+
+'get Connection string
+F.ODBC.Connection!conG.ExecuteAndReturn("Select rTrim(PROVIDER), rTrim(SERVER), rTrim(DATABASE), rTrim(USER_ID), rTrim(PWD) From GCG_4348_CONNECTION Where NUM = '1'", V.Local.sRet)
+F.Intrinsic.String.Split(V.Local.sRet, "*!*", V.Local.sRet)
+V.Global.sProvider.Set(V.Local.sRet(0))
+V.Global.sServer.Set(V.Local.sRet(1))
+V.Global.sDatabase.Set(V.Local.sRet(2))
+V.Global.sUID.Set(V.Local.sRet(3))
+V.Global.sPWD.Set(V.Local.sRet(4))
+F.Intrinsic.String.Build("Provider={0};Server={1};Database={2};User ID={3};Password={4};{5};", V.Global.sProvider,V.Global.sServer,V.Global.sDatabase,V.Global.sUID,V.Global.sPWD,1000000000000000,V.Global.sLogin)
+F.ODBC.Connection!conA.OpenConnection(V.Global.sLogin)
+
+'check the table for orders that are locked
+Function.Intrinsic.Control.CallSub(check_xc)
+
+'get the list of special product lines
+F.ODBC.Connection!conG.ExecuteAndReturn("Select PL From GCG_4348_PL_CUST Where PL <> ''", V.Local.sRet)
+F.Intrinsic.String.Replace(V.Local.sRet, "*!*", "",V.Local.sRet)
+F.Intrinsic.String.Replace(V.Local.sRet, "#$#", "','",V.Global.sPL)
+
+
+	
+Function.Intrinsic.Control.If(V.Caller.Hook, =, "38130")
+	'check PID
+	Function.Intrinsic.Control.CallSub(is_running)
+	'create datatable of all the orders
+	Function.Intrinsic.Control.CallSub(create_table)
+	'loop through table 'ORDERS' and download to Accellos
+	Function.Intrinsic.Control.If(V.DataView.ORDERS!ORDERS_V.RowCount, >, 0)
+		Function.Data.DataView.ToDataTableDistinct("ORDERS", "ORDERS_V", "UP", "SO_NUMBER", TRUE)
+
+			F.Intrinsic.Control.For(V.Local.iC, 0, V.DataTable.UP.RowCount--, 1)
+				'set the global variable sOrderNO
+				V.Global.sOrderNO.Set(V.DataTable.UP(V.Local.iC).SO_NUMBER!FieldVal)
+				Function.Intrinsic.Control.CallSub(download_order)
+			F.Intrinsic.Control.Next(V.Local.iC)
+	Function.Intrinsic.Control.EndIf
+	'delete file for next run
+	F.Intrinsic.String.Build("{0}\Accellos_GSS\Running_{1}.txt",V.Caller.FilesDir,"Y",V.Local.sFile)
+	Function.Intrinsic.File.DeleteFile(V.Local.sFile)
+	
+'"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""	
+'FOR TESTING IF NEEDED FROM A CUSTOM HOOK. 
+'18 for Accellos
+Function.Intrinsic.Control.ElseIf(V.Caller.Hook, =, "1000018")
+	'check PID
+	Function.Intrinsic.Control.CallSub(is_running)
+	'create datatable of all the orders
+	Function.Intrinsic.Control.CallSub(create_table)
+	'loop through table 'ORDERS' and download to Accellos
+	Function.Intrinsic.Control.If(V.DataView.ORDERS!ORDERS_V.RowCount, >, 0)
+		Function.Data.DataView.ToDataTableDistinct("ORDERS", "ORDERS_V", "UP", "SO_NUMBER", TRUE)
+
+			F.Intrinsic.Control.For(V.Local.iC, 0, V.DataTable.UP.RowCount--, 1)
+				'set the global variable sOrderNO
+				V.Global.sOrderNO.Set(V.DataTable.UP(V.Local.iC).SO_NUMBER!FieldVal)
+				Function.Intrinsic.Control.CallSub(download_order)
+			F.Intrinsic.Control.Next(V.Local.iC)
+	Function.Intrinsic.Control.EndIf
+	'delete file for next run
+	F.Intrinsic.String.Build("{0}\Accellos_GSS\Running_{1}.txt",V.Caller.FilesDir,"Y",V.Local.sFile)
+	Function.Intrinsic.File.DeleteFile(V.Local.sFile)
+'"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""	
+		
+Function.Intrinsic.Control.EndIf
+
+
+Function.Intrinsic.Control.CallSub(unload)
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_SO_Online.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	'F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.Is_Running.Start
+F.Intrinsic.Control.SetErrorHandler("Is_Running_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+V.Local..BulkDeclareString(sFile, sCurrentPIDProcess, sDir)
+V.Local.bExists.Declare(Boolean)
+V.Local.iPID.Declare(Long)
+
+'check if file exists
+F.Intrinsic.String.Build("{0}\Accellos_GSS",v.Caller.FilesDir,v.Local.sDir) 
+F.Intrinsic.File.DirExists(v.Local.sDir,v.Local.bExists) 
+F.Intrinsic.Control.If(v.Local.bExists,=,False) 
+	f.Intrinsic.File.CreateDir(v.Local.sDir) 
+Function.Intrinsic.Control.EndIf
+
+'get PID
+V.Local.iPID.Set(V.Ambient.PID)
+
+'check to see if program is already running. First check for file
+F.Intrinsic.String.Build("{0}\Accellos_GSS\Running_{1}.txt",V.Caller.FilesDir,"Y",V.Local.sFile)
+F.Intrinsic.File.Exists(V.Local.sFile,V.Local.bExists)
+F.Intrinsic.Control.If(V.Local.bExists,=,False)
+	'Create Program Status file to let it know its running
+	F.Intrinsic.File.String2File(V.Local.sFile,V.Local.iPID.String)
+Function.Intrinsic.Control.Else
+ 'then the file exists: get the PID from the file to see if the process is still running
+	F.Intrinsic.File.File2String(V.Local.sFile, V.Local.sCurrentPIDProcess)
+	F.Intrinsic.Task.PIDRunning(V.Local.sCurrentPIDProcess,V.Local.bExists)
+	Function.Intrinsic.Control.If(V.Local.bExists, =, TRUE)
+		'the the program is running- don't start new process
+		Function.Intrinsic.Control.End
+
+	Function.Intrinsic.Control.Else
+		'the program has stopped, but did not delete the file. Delete the file and create a new file for current run
+		Function.Intrinsic.File.DeleteFile(V.Local.sFile)
+		F.Intrinsic.File.String2File(V.Local.sFile,V.Local.iPID.String)
+	Function.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Is_Running_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_SO_Online.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Is_Running.End
+
+Program.Sub.Check_XC.Start
+F.Intrinsic.Control.SetErrorHandler("Check_XC_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+V.Local.ssql.Declare(String)
+V.Local.sRet.Declare(String)
+V.Local.iC.Declare(Long)
+
+'add to locked table in pcc
+F.Data.DataTable.CreateFromSQL("LOCKED", "conA", "Select Field003 As SO_NUMBER, 'Y' As LOCKED From A1Warehouse.dbo.UPLOAD Where UPLOADED = '0' And FIELD001 = 'XC' And FIELD002 = 'P' And FIELD012 = 'L'")
+'Function.Data.DataTable.SetPK("LOCKED", "SO_NUMBER")
+'update UPLOADED to '1': we read the record
+Function.ODBC.Connection!conA.Execute("Update A1Warehouse.dbo.UPLOAD set UPLOADED = 1 Where FIELD001 = 'XC' And FIELD002 = 'P'")
+'save to GSS
+'F.Data.DataTable.SaveToDB("LOCKED", "conG", "GCG_4348_LOCKED", "SO_NUMBER",256)
+
+'save to GSS- loop- alternate
+Function.Intrinsic.Control.If(V.DataTable.LOCKED.RowCount, >, 0)
+	F.Intrinsic.Control.For(V.Local.iC, 0, V.DataTable.LOCKED.RowCount--, 1)
+		F.Intrinsic.String.Build("UPDATE GCG_4348_LOCKED Set LOCKED = 'Y' Where SO_NUMBER = '{0}'", V.DataTable.LOCKED(V.Local.iC).SO_NUMBER!FieldVal, V.Local.ssql)
+		Function.ODBC.Connection!conG.Execute(V.Local.ssql)
+	F.Intrinsic.Control.Next(V.Local.iC)
+Function.Intrinsic.Control.EndIf
+
+F.Data.DataTable.Close("LOCKED")
+'""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+F.Data.DataTable.CreateFromSQL("LOCKED", "conA", "Select Field003 As SO_NUMBER, 'N' As LOCKED From A1Warehouse.dbo.UPLOAD Where UPLOADED = '0' And FIELD001 = 'XC' And FIELD002 = 'P' And FIELD012 = 'U'")
+Function.ODBC.Connection!conA.Execute("Update A1Warehouse.dbo.UPLOAD set UPLOADED = 1 Where FIELD001 = 'XC' And FIELD002 = 'P'")
+
+'save to GSS- loop- alternate
+Function.Intrinsic.Control.If(V.DataTable.LOCKED.RowCount, >, 0)
+	F.Intrinsic.Control.For(V.Local.iC, 0, V.DataTable.LOCKED.RowCount--, 1)
+		F.Intrinsic.String.Build("UPDATE GCG_4348_LOCKED Set LOCKED = 'N' Where SO_NUMBER = '{0}'", V.DataTable.LOCKED(V.Local.iC).SO_NUMBER!FieldVal, V.Local.ssql)
+		Function.ODBC.Connection!conG.Execute(V.Local.ssql)
+	F.Intrinsic.Control.Next(V.Local.iC)
+Function.Intrinsic.Control.EndIf
+
+
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Check_XC_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_SO_Online.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Check_XC.End
+
+Program.Sub.Create_Table.Start
+F.Intrinsic.Control.SetErrorHandler("Create_Table_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+V.Local.sFilter.Declare(String)
+
+'create a view of all the orders that need to be downloaded to Accellos
+F.Data.DataTable.CreateFromSQL("ORDERS", "conG","Select Order_No As SO_NUMBER, 'N' As DNLOADED, RECORD_NO, PART, '' As PRODUCT_LINE  From V_ORDER_LINES", TRUE)
+
+F.Data.Dictionary.CreateFromSQL("dict", "conG", "Select SO_NUMBER, DNLOADED From GCG_4348_LOCKED")
+F.Data.Dictionary.SetDefaultReturn("dict", "N")
+F.Data.DataTable.FillFromDictionary("ORDERS", "dict", "SO_NUMBER", "DNLOADED")
+F.Data.Dictionary.Close("dict")
+
+F.Data.Dictionary.CreateFromSQL("dict", "conG", "Select PART, PRODUCT_LINE From V_INVENTORY_MSTR")
+F.Data.Dictionary.SetDefaultReturn("dict", "")
+F.Data.DataTable.FillFromDictionary("ORDERS", "dict", "PART", "PRODUCT_LINE")
+F.Data.Dictionary.Close("dict")
+
+F.Data.DataView.Create("ORDERS", "ORDERS_V")
+'F.Data.DataView.SetFilter("ORDERS", "ORDERS_V", "DNLOADED = 'N'")
+
+F.Intrinsic.String.Build("DNLOADED <> 'Y' And PRODUCT_LINE In ('{0}')", V.Global.sPL, V.Local.sFilter)
+
+Function.Data.DataView.SetFilter("ORDERS", "ORDERS_V", V.Local.sFilter)
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Create_Table_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_SO_Online.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Create_Table.End
+
+Program.Sub.DownLoad_Order.Start
+F.Intrinsic.Control.SetErrorHandler("DownLoad_Order_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+'header, then lines
+V.Local..BulkDeclareString(ssql, sFields, sValues, sDateDue, sOrderDate, sRet, sLabel, sPackingSlip, sShipper)
+V.Local.iC.Declare(Long)
+
+'pad the order
+F.Intrinsic.String.LPad(V.Global.sOrderNO,"0",7,V.Global.sOrderNO)
+'select from order header to dataTable
+F.Intrinsic.String.Build("Select * From V_ORDER_HEADER Where ORDER_NO = '{0}'", V.Global.sOrderNO, V.Local.ssql)
+F.Data.DataTable.CreateFromSQL("HEADER", "conG", V.Local.ssql)
+'select from V_ORDER_SHIP_TO
+F.Intrinsic.String.Build("Select * from V_ORDER_SHIP_TO WHERE ORDER_NO = '{0}' And SHIP_ID = '{1}'", V.Global.sOrderNO, V.DataTable.HEADER(0).SHIP_ID!FieldValTrim,V.Local.ssql)
+F.Data.DataTable.CreateFromSQL("SHIP", "conG", V.Local.ssql)
+'select from V_ORDER_BILL_TO
+F.Intrinsic.String.Build("Select * from V_ORDER_BILL_TO WHERE ORDER_NO = '{0}' And SHIP_ID = '{1}'", V.Global.sOrderNO, V.DataTable.HEADER(0).SHIP_ID!FieldValTrim,V.Local.ssql)
+F.Data.DataTable.CreateFromSQL("BILL", "conG", V.Local.ssql)
+
+'get customer label Type and Packslip Report
+F.Intrinsic.String.Build("Select LABEL, PACKING_SLIP, SHIPPER From GCG_4348_SHIP_INFO Where CUSTOMER = '{0}'", V.DataTable.HEADER(0).CUSTOMER!FieldValTrim, V.Local.ssql)
+F.ODBC.Connection!conG.ExecuteAndReturn(V.Local.ssql, V.Local.sRet)
+F.Intrinsic.String.Split(V.Local.sRet, "*!*", V.Local.sRet)
+Function.Intrinsic.Control.If (V.Local.sRet.UBound, =, 3)
+	V.Local.sLabel.Set(V.Local.sRet(0))
+	V.Local.sPackingSlip.Set(V.Local.sRet(1))
+	V.Local.sShipper.Set(V.Local.sRet(2))
+Function.Intrinsic.Control.Else
+	V.Local.sLabel.Set(" ")
+	V.Local.sPackingSlip.Set(" ")
+	V.Local.sShipper.Set(" ")
+Function.Intrinsic.Control.EndIf
+'Format Date Due
+Function.Intrinsic.String.Format(V.DataTable.HEADER(0).DATE_DUE!FieldValTrim, "YYYYMMDD", V.Local.sDateDue)
+Function.Intrinsic.String.Format(V.DataTable.HEADER(0).DATE_ORDER!FieldValTrim, "YYYYMMDD", V.Local.sOrderDate)
+
+'create the ORDER HEADER SQL
+V.Local.sFields.Set("DNLOADED, FIELD001, FIELD004, FIELD005, FIELD007, FIELD008, FIELD009, FIELD012, FIELD013, FIELD014, FIELD015, FIELD016, FIELD017, FIELD018, FIELD019")
+F.Intrinsic.String.Build("'0','PH','{0}','{1}','{2}','{3}','{4}','{5}','{6}','{7}','{8}','{9}','{10}', '{11}', '{12}'",V.DataTable.HEADER(0).CUSTOMER!FieldValStringMSsqlFriendly,V.Global.sOrderNO,V.DataTable.HEADER(0).CUSTOMER_PO!FieldValStringMSsqlFriendly,V.Local.sLabel,V.Local.sPackingSlip, V.DataTable.SHIP(0).NAME_CUSTOMER_SHIP!FieldValStringMSsqlFriendly, V.DataTable.SHIP(0).ADDRESS_1_SHIP!FieldValStringMSsqlFriendly,V.DataTable.SHIP(0).ADDRESS_2_SHIP!FieldValStringMSsqlFriendly,V.DataTable.SHIP(0).CITY_SHIP!FieldValStringMSsqlFriendly, V.DataTable.SHIP(0).STATE_SHIP!FieldValStringMSsqlFriendly, V.DataTable.SHIP(0).CODE_ZIP_SHIP!FieldValStringMSsqlFriendly, V.DataTable.SHIP(0).COUNTRY_SHIP!FieldValStringMSsqlFriendly, V.DataTable.SHIP(0).ATTENTION_SHIP!FieldValStringMSsqlFriendly,V.Local.sValues)
+'FOR TESTING ONLY SENDING ONE ORDER """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'F.Intrinsic.String.Build("'0','0H','{0}','{1}','{2}','{3}','{4}','{5}','{6}','{7}','{8}','{9}','{10}', '{11}', '{12}'",V.DataTable.HEADER(0).CUSTOMER!FieldValTrim,V.Global.sOrderNO,V.DataTable.HEADER(0).CUSTOMER_PO!FieldValTrim,V.Local.sLabel,V.Local.sPackingSlip, V.DataTable.SHIP(0).NAME_CUSTOMER_SHIP!FieldValTrim, V.DataTable.SHIP(0).ADDRESS_1_SHIP!FieldValTrim,V.DataTable.SHIP(0).ADDRESS_2_SHIP!FieldValTrim,V.DataTable.SHIP(0).CITY_SHIP!FieldValTrim, V.DataTable.SHIP(0).STATE_SHIP!FieldValTrim, V.DataTable.SHIP(0).CODE_ZIP_SHIP!FieldValTrim, V.DataTable.SHIP(0).COUNTRY_SHIP!FieldValTrim, V.DataTable.SHIP(0).ATTENTION_SHIP!FieldValTrim,V.Local.sValues)
+
+F.Intrinsic.String.Build("{0}, FIELD021, FIELD022, FIELD023, FIELD024, FIELD025, FIELD026, FIELD027, FIELD028",V.Local.sFields,V.Local.sFields)
+F.Intrinsic.String.Build("{0},'{1}','{2}','{3}','{4}','{5}','{6}','{7}','{8}'", V.Local.sValues, V.DataTable.BILL(0).NAME_CUSTOMER!FieldValStringMSsqlFriendly, V.DataTable.BILL(0).ADDRESS_1!FieldValStringMSsqlFriendly, V.DataTable.BILL(0).ADDRESS_2!FieldValStringMSsqlFriendly, V.DataTable.BILL(0).CITY!FieldValStringMSsqlFriendly, V.DataTable.BILL(0).STATE!FieldValStringMSsqlFriendly, V.DataTable.BILL(0).ZIP_CODE!FieldValStringMSsqlFriendly, V.DataTable.BILL(0).COUNTRY!FieldValStringMSsqlFriendly, V.Local.sDateDue,V.Local.sValues)
+
+F.Intrinsic.String.Build("{0}, FIELD032, FIELD033, FIELD035, FIELD050, FIELD054, FIELD055, FIELD056, FIELD057, FIELD058, FIELD059, FIELD038", V.Local.sFields, V.Local.sFields)
+F.Intrinsic.String.Build("{0},'{1}','{2}','{3}','{4}','{5}','{6}','{7}','{8}','{9}','{10}', '{11}'",V.Local.sValues, "P", V.DataTable.HEADER(0).CARRIER_CD!FieldValStringMSsqlFriendly, V.Local.sOrderDate, "1", "Dr. Vita", "6980 W Warm Springs Rd #100","","Las Vegas","NV","89113", V.Local.sShipper,V.Local.sValues)
+
+'BUILD THE INSERT STATEMENT
+F.Intrinsic.String.Build("Insert into A1warehouse.dbo.DNLOAD({0}) Values ({1})",V.Local.sFields,V.Local.sValues,V.Local.ssql)
+'execute the build
+F.ODBC.Connection!conA.Execute(v.Local.ssql)
+'write to text file
+F.Intrinsic.String.Build("{0}{1}{2}", V.Global.sTextFile,V.Local.ssql, V.Ambient.NewLine, V.Global.sTextFile)
+
+'LINES loop through for each line
+F.Intrinsic.String.Build("Select * From V_ORDER_LINES Where ORDER_NO = '{0}'", V.Global.sOrderNO, V.Local.ssql)
+F.Data.DataTable.CreateFromSQL("LINES", "conG", V.Local.ssql)
+
+F.Intrinsic.Control.For(V.Local.iC, 0, V.DataTable.LINES.RowCount--, 1)
+	F.Intrinsic.String.LPad(V.Global.sOrderNO,"0",7,V.Global.sOrderNO)
+	V.Local.sFields.Set("DNLOADED,FIELD001, FIELD002, FIELD004, FIELD005, FIELD010, FIELD012, FIELD014, FIELD015, FIELD017, FIELD018, FIELD019, FIELD023, FIELD048, FIELD060")
+	F.Intrinsic.String.Build("'0','PD','{0}','{1}','{2}','{3}','{4}','{5}','{6}','{7}','{8}','{9}','{10}','{11}', '{12}'","LVDST",V.DataTable.HEADER(0).CUSTOMER!FieldValStringMSsqlFriendly,V.Global.sOrderNO,V.DataTable.LINES(V.Local.iC).RECORD_NO!FieldVal, V.DataTable.LINES(V.Local.iC).PART!FieldValStringMSsqlFriendly, V.DataTable.LINES(V.Local.iC).DESCRIPTION!FieldValStringMSsqlFriendly,"1",V.DataTable.LINES(V.Local.iC).PART!FieldValStringMSsqlFriendly,V.DataTable.LINES(V.Local.iC).QTY_ORDERED!FieldVal,V.DataTable.LINES(V.Local.iC).QTY_ORDERED!FieldVal, V.DataTable.LINES(V.Local.iC).COST!FieldVal,V.DataTable.HEADER(0).CUSTOMER_PO!FieldValStringMSsqlFriendly,V.DataTable.LINES(V.Local.iC).PRICE!FieldVal,v.Local.sValues)
+'FOR TESTING ONLY SENDING ONE ORDER """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""	
+'	F.Intrinsic.String.Build("'0','0D','{0}','{1}','{2}','{3}','{4}','{5}','{6}','{7}','{8}','{9}','{10}','{11}', '{12}'","LVDST",V.DataTable.HEADER(0).CUSTOMER!FieldVal,V.Global.sOrderNO,V.DataTable.LINES(V.Local.iC).RECORD_NO!FieldVal, V.DataTable.LINES(V.Local.iC).PART!FieldVal, V.DataTable.LINES(V.Local.iC).DESCRIPTION!FieldVal,"1",V.DataTable.LINES(V.Local.iC).PART!FieldVal,V.DataTable.LINES(V.Local.iC).QTY_ORDERED!FieldVal,V.DataTable.LINES(V.Local.iC).QTY_ORDERED!FieldVal, V.DataTable.LINES(V.Local.iC).COST!FieldVal,V.DataTable.HEADER(0).CUSTOMER_PO!FieldVal,V.DataTable.LINES(V.Local.iC).PRICE!FieldVal,v.Local.sValues)
+	'BUILD THE INSERT STATEMENT
+	F.Intrinsic.String.Build("Insert into A1warehouse.dbo.DNLOAD({0}) Values ({1})",V.Local.sFields,V.Local.sValues,V.Local.ssql)
+	'execute the build
+	F.ODBC.Connection!conA.Execute(v.Local.ssql)
+	'write to text file
+	F.Intrinsic.String.Build("{0}{1}{2}", V.Global.sTextFile,V.Local.ssql, V.Ambient.NewLine, V.Global.sTextFile)
+	
+F.Intrinsic.Control.Next(V.Local.iC)
+
+'close the tables
+F.Data.DataTable.Close("HEADER")
+F.Data.DataTable.Close("SHIP")
+F.Data.DataTable.Close("BILL")
+F.Data.DataTable.Close("LINES")
+
+'add to GCG_4348_LOCKED table: Y in DNLOADED if it does not exist
+F.Intrinsic.String.Build("Select * From GCG_4348_LOCKED Where SO_NUMBER = '{0}'", V.Global.sOrderNO, V.Local.ssql)
+Function.ODBC.Connection!conG.ExecuteAndReturn(V.Local.ssql, V.Local.sRet)
+Function.Intrinsic.Control.If(V.Local.sRet, =, "")
+	F.Intrinsic.String.Build("Insert Into GCG_4348_LOCKED (SO_NUMBER, DNLOADED) Values ('{0}', 'Y')", V.Global.sOrderNO, V.Local.ssql)
+	F.ODBC.Connection!conG.Execute(v.Local.ssql)
+Function.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("DownLoad_Order_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_SO_Online.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.DownLoad_Order.End
+
+Program.Sub.Unload.Start
+F.Intrinsic.Control.SetErrorHandler("Unload_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+'close the connection and program
+F.ODBC.Connection!conG.Close 
+F.ODBC.Connection!conA.Close 
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Unload_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4348_SO_Online.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	'F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.End
+
+Function.Intrinsic.Control.EndIf
+Program.Sub.Unload.End
+
+Program.Sub.Comments.Start
+${$0$}$$}$DH1$}$4/25/2017 2:04:56 PM$}$False
+${$3$}$0$}$$}$-1$}$-1$}$$}$1/1/1900$}$Original customer was SMS Millcraft.
+
+This is a re-write of the original script due to many inconsistencies with the original.
+Program.Sub.Comments.End
